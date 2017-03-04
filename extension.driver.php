@@ -1,28 +1,56 @@
 <?php
 
-class extension_Asset_Pipeline_Less extends Extension
+class Extension_Asset_Pipeline_Less extends Extension
 {
+    public $error;
+
+    public function getOutputType()
+    {
+        return 'css';
+    }
+
     public function getSubscribedDelegates()
     {
         return array(
             array(
                 'page' => '/extension/asset_pipeline/',
-                'delegate' => 'RegisterPlugins',
+                'delegate' => 'RegisterPreprocessors',
                 'callback' => 'register'
             )
         );
     }
 
-    function register($context) {
-        $context['plugins']['less'] = array('output_type' => 'css', 'driver' => $this);
+    public function register($context)
+    {
+        $context['preprocessors']['less'] = $this;
     }
 
-    public function compile($content, $import_dir = null)
+    public function convert($content, $import_dir)
     {
-        $result = shell_exec(
-            'node ' . escapeshellarg(__DIR__ . '/lib/compile.js') . ' ' . escapeshellarg($content) . ' ' . escapeshellarg($import_dir)
+        $process = proc_open(
+            'node lib/compile.js '
+                . escapeshellarg($content) . ' '
+                . escapeshellarg($import_dir),
+            array(
+                0 => array('pipe', 'r'),
+                1 => array('pipe', 'w'),
+                2 => array('pipe', 'w')
+            ),
+            $pipes, __DIR__
         );
-        $pos = strpos($result, ' ');
-        return array(substr($result, 0, $pos) => substr($result, $pos + 1));
+
+        if ($error = stream_get_contents($pipes[2])) {
+            $this->error = $error;
+        } else {
+            $content = stream_get_contents($pipes[1]);
+        }
+
+        foreach ($pipes as $pipe) {
+            fclose($pipe);
+        }
+        proc_close($process);
+
+        return $content;
     }
+
 }
